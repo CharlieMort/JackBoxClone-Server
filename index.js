@@ -15,50 +15,24 @@ const io = socketIO(server, {
 const rooms = {};
 const players = {};
 
-// -------------Sending PM's------------------
 /*
 
-{
-    players: [
-        {
-            nick,
-            id
-        }
-    ],
-    code,
-    conversations: [
-        convo {
-            recipiants: [socketID1, socketID2],
-            msgs: [
-                msg {
-                    txt: "Oooo Hiya",
-                    sender: socketID2
-                },
-                msg {
-                    txt: "Hiya Sexy",
-                    sender: socketID1
-                }
-            ]
-        }
-    ]
-}
+----------------------- THINGS TO DO --------------------------------
+1. Create Rounds
+2. Msg Limit
+3. Timer
+4. Showcase Convo At End Of Round
 
-STEPS TO SENDING A MSG
-
-1. Oi i wanna send a msg
-2. Ok ummm well who to
-3. is there already a convo open
-4. No? wow your social.
-4.1 Lets make a new convo
-4.2 add recipiants
-5. Push msg to msgs
-6. Oi these cunts sent a new msg
+GAME STAGES
+lobby - when players are in lobby allow joining
+game - players can msg and but no joining --countdown 120
+showcase - shows off a random convo --countdown 30
+nextRound - show next round screen --countdown 10
+repeat
 
 */
 
 function GetConvo(roomCode, id, id2) {
-    console.log(rooms[roomCode]);
-    console.log(roomCode);
     for (let i = 0; i<rooms[roomCode].conversations.length; i++) {
         if (rooms[roomCode].conversations[i].recipiants.includes(id) && rooms[roomCode].conversations[i].recipiants.includes(id2)) {
             return i;
@@ -74,10 +48,10 @@ function SendMsg(roomCode, msg, socket, recipiant) {
         // Create Convo
         rooms[roomCode].conversations.push({
             recipiants: [socket.id, recipiant],
+            recipiantsNicks: [players[socket.id], players[recipiant]],
             msgs: []
         });
         convoIdx = GetConvo(roomCode, socket.id, recipiant);
-        console.log("Conversation Index :"+convoIdx);
     }
     // Add To Msg Array
     rooms[roomCode].conversations[convoIdx].msgs.push({
@@ -85,11 +59,9 @@ function SendMsg(roomCode, msg, socket, recipiant) {
         sender: socket.id,
         senderNick: players[socket.id]
     });
-    console.log("\n ----------------------------ROOMS-----------------------------");
-    console.log(JSON.stringify(rooms, null, 2));
     // Oi They Sent A Msg
     io.to(recipiant).emit("SentMsgFrom", socket.id);
-    io.to(roomCode).emit("RoomInfo", rooms[roomCode]);
+    SendRoomInfo(roomCode);
 }
 
 function MakeID(length) {
@@ -110,7 +82,13 @@ function CreateRoom() {
         code: roomCode,
         slotsLeft: 6,
         conversations: [],
-        started: false
+        started: false,
+        round: 0,
+        maxRounds: 4,
+        stage: "lobby",
+        countdownTimer: null,
+        countdown: 0,
+        showcaseConvo: undefined
     }
     return roomCode;
 }
@@ -125,8 +103,6 @@ function JoinRoom(roomCode, socket, host) {
                 isHost: host
             })
             rooms[roomCode].slotsLeft --;
-            console.log("\n ----------------------------ROOMS-----------------------------");
-            console.log(JSON.stringify(rooms, null, 2));
             return true;
         }
     }
@@ -144,10 +120,28 @@ function Disconnect(socket) {
             }
         }
     }
-    console.log("\n ----------------------------ROOMS-----------------------------");
-    console.log(JSON.stringify(rooms, null, 2));
     console.log(`${socket.id} Has Disconnected :(`);
     console.log(`${io.engine.clientsCount} Clients Connected`);
+}
+
+function SendRoomInfo(roomCode) {
+    let roomClientCopy = Object.assign({}, rooms[roomCode]);
+    delete roomClientCopy.countdownTimer;
+    io.to(roomCode).emit("RoomInfo", roomClientCopy);
+}
+
+function StartGame(roomCode) {
+    rooms[roomCode].started = true;
+    rooms[roomCode].stage = "game";
+    rooms[roomCode].countdown = 60;
+    rooms[roomCode].countdownTimer = setTimeout(() => {
+        clearTimeout(rooms[roomCode].countdownTimer);
+        rooms[roomCode].stage = "showcase";
+        let randConvoIdx = Math.floor(Math.random() * rooms[roomCode].conversations.length);
+        rooms[roomCode].showcaseConvo = rooms[roomCode].conversations[randConvoIdx];
+        SendRoomInfo(roomCode);
+    }, 10000)
+    SendRoomInfo(roomCode);
 }
 
 io.on("connection", (socket) => {
@@ -156,26 +150,24 @@ io.on("connection", (socket) => {
     socket.on("CreateNickname", (nick) => {
         if (!players.hasOwnProperty(socket.id)) {
             players[socket.id] = nick;
-            console.log(JSON.stringify(players, null, 2));
         }
     })
     socket.on("CreateRoom", () => {
         let roomCode = CreateRoom();
         if (JoinRoom(roomCode, socket, true)) {
-            io.to(roomCode).emit("RoomInfo", rooms[roomCode]);
+            SendRoomInfo(roomCode);
         }
     })
     socket.on("JoinRoom", (roomCode) => {
         if (JoinRoom(roomCode, socket, false)) {
-            io.to(roomCode).emit("RoomInfo", rooms[roomCode]);
+            SendRoomInfo(roomCode);
         }
     })
     socket.on("SendMsg", (roomCode, msg, recipiant) => {
         SendMsg(roomCode, msg, socket, recipiant);
     })
     socket.on("StartGame", (roomCode) => {
-        rooms[roomCode].started = true;
-        io.to(roomCode).emit("RoomInfo", rooms[roomCode]);
+        StartGame(roomCode);
     })
     socket.on("disconnect", () => {
         Disconnect(socket);
