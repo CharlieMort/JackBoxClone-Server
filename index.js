@@ -87,7 +87,6 @@ function CreateRoom() {
         maxRounds: 4,
         stage: "lobby",
         countdownTimer: null,
-        countdown: 0,
         showcaseConvo: undefined
     }
     return roomCode;
@@ -133,14 +132,13 @@ function SendRoomInfo(roomCode) {
 function StartGame(roomCode) {
     rooms[roomCode].started = true;
     rooms[roomCode].stage = "game";
-    rooms[roomCode].countdown = 60;
     rooms[roomCode].countdownTimer = setTimeout(() => {
         clearTimeout(rooms[roomCode].countdownTimer);
         rooms[roomCode].stage = "showcase";
         let randConvoIdx = Math.floor(Math.random() * rooms[roomCode].conversations.length);
         rooms[roomCode].showcaseConvo = rooms[roomCode].conversations[randConvoIdx];
         SendRoomInfo(roomCode);
-    }, 10000)
+    }, 120000)
     SendRoomInfo(roomCode);
 }
 
