@@ -43,7 +43,6 @@ function GetConvo(roomCode, id, id2) {
 
 function SendMsg(roomCode, msg, socket, recipiant) {
     let convoIdx = GetConvo(roomCode, socket.id, recipiant);
-    console.log("Conversation Index :"+convoIdx);
     if (convoIdx === false) {
         // Create Convo
         rooms[roomCode].conversations.push({
@@ -59,8 +58,15 @@ function SendMsg(roomCode, msg, socket, recipiant) {
         sender: socket.id,
         senderNick: players[socket.id]
     });
+    let senderIdx = null;
+    for (let i = 0; i<rooms[roomCode].players.length; i++) {
+        if (rooms[roomCode].players[i].id === socket.id) {
+            senderIdx = i;
+            break;
+        }
+    }
     // Oi They Sent A Msg
-    io.to(recipiant).emit("SentMsgFrom", socket.id);
+    io.to(recipiant).emit("NewMsg", senderIdx);
     SendRoomInfo(roomCode);
 }
 
@@ -152,9 +158,8 @@ io.on("connection", (socket) => {
     })
     socket.on("CreateRoom", () => {
         let roomCode = CreateRoom();
-        if (JoinRoom(roomCode, socket, true)) {
-            SendRoomInfo(roomCode);
-        }
+        socket.join(roomCode);
+        SendRoomInfo(roomCode);
     })
     socket.on("JoinRoom", (roomCode) => {
         if (JoinRoom(roomCode, socket, false)) {
