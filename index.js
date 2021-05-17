@@ -26,6 +26,7 @@ const players = {};
 GAME STAGES
 lobby - when players are in lobby allow joining
 game - players can msg and but no joining --countdown 120
+choose matches
 showcase - shows off a random convo --countdown 30
 nextRound - show next round screen --countdown 10
 repeat
@@ -93,7 +94,8 @@ function CreateRoom() {
         maxRounds: 4,
         stage: "lobby",
         countdownTimer: null,
-        showcaseConvo: undefined
+        showcaseConvo: undefined,
+        matches: {}
     }
     return roomCode;
 }
@@ -140,11 +142,16 @@ function StartGame(roomCode) {
     rooms[roomCode].stage = "game";
     rooms[roomCode].countdownTimer = setTimeout(() => {
         clearTimeout(rooms[roomCode].countdownTimer);
-        rooms[roomCode].stage = "showcase";
+        rooms[roomCode].stage = "matches";
         let randConvoIdx = Math.floor(Math.random() * rooms[roomCode].conversations.length);
         rooms[roomCode].showcaseConvo = rooms[roomCode].conversations[randConvoIdx];
         SendRoomInfo(roomCode);
-    }, 120000)
+    }, 20000)
+    SendRoomInfo(roomCode);
+}
+
+function Match(matchIdx, roomCode, socket) {
+    rooms[roomCode].matches[socket.id] = rooms[roomCode].players[matchIdx];
     SendRoomInfo(roomCode);
 }
 
@@ -171,6 +178,9 @@ io.on("connection", (socket) => {
     })
     socket.on("StartGame", (roomCode) => {
         StartGame(roomCode);
+    })
+    socket.on("PickMatch", (matchIdx, roomCode) => {
+        Match(matchIdx, roomCode);
     })
     socket.on("disconnect", () => {
         Disconnect(socket);
