@@ -143,6 +143,10 @@ function StartGame(roomCode) {
     rooms[roomCode].countdownTimer = setTimeout(() => {
         clearTimeout(rooms[roomCode].countdownTimer);
         rooms[roomCode].stage = "matches";
+        rooms[roomCode].countdownTimer = setTimeout(() => {
+            rooms[roomCode].stage = "showcase";
+            clearTimeout(rooms[roomCode].countdownTimer);
+        }, 30000)
         let randConvoIdx = Math.floor(Math.random() * rooms[roomCode].conversations.length);
         rooms[roomCode].showcaseConvo = rooms[roomCode].conversations[randConvoIdx];
         SendRoomInfo(roomCode);
@@ -152,6 +156,11 @@ function StartGame(roomCode) {
 
 function Match(matchIdx, roomCode, socket) {
     rooms[roomCode].matches[socket.id] = rooms[roomCode].players[matchIdx];
+    console.log(`${Object.keys(rooms[roomCode].matches).length} Players:${rooms[roomCode].players.length}`);
+    if (Object.keys(rooms[roomCode].matches).length === rooms[roomCode].players.length) {
+        rooms[roomCode].stage = "showcase";
+        clearTimeout(rooms[roomCode].countdownTimer);
+    }
     SendRoomInfo(roomCode);
 }
 
@@ -180,7 +189,7 @@ io.on("connection", (socket) => {
         StartGame(roomCode);
     })
     socket.on("PickMatch", (matchIdx, roomCode) => {
-        Match(matchIdx, roomCode);
+        Match(matchIdx, roomCode, socket);
     })
     socket.on("disconnect", () => {
         Disconnect(socket);
