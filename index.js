@@ -1,6 +1,7 @@
 const express = require("express");
 const socketIO = require("socket.io");
 const http = require("http");
+const e = require("express");
 
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -14,24 +15,6 @@ const io = socketIO(server, {
 
 const rooms = {};
 const players = {};
-
-/*
-
------------------------ THINGS TO DO --------------------------------
-1. Create Rounds
-2. Msg Limit
-3. Timer
-4. Showcase Convo At End Of Round
-
-GAME STAGES
-lobby - when players are in lobby allow joining
-game - players can msg and but no joining --countdown 120
-choose matches
-showcase - shows off a random convo --countdown 30
-nextRound - show next round screen --countdown 10
-repeat
-
-*/
 
 function GetConvo(roomCode, id, id2) {
     for (let i = 0; i<rooms[roomCode].conversations.length; i++) {
@@ -90,12 +73,14 @@ function CreateRoom() {
         slotsLeft: 6,
         conversations: [],
         started: false,
-        round: 0,
+        round: 1,
         maxRounds: 4,
         stage: "lobby",
         countdownTimer: null,
         showcaseConvo: undefined,
-        matches: {}
+        matches: {},
+        matchOutcomes: [],
+        leaderBoard: []
     }
     return roomCode;
 }
@@ -107,7 +92,9 @@ function JoinRoom(roomCode, socket, host) {
             rooms[roomCode].players.push({
                 id: socket.id,
                 nick: players[socket.id],
-                isHost: host
+                isHost: host,
+                score: 0,
+                idx: rooms[roomCode].players.length
             })
             rooms[roomCode].slotsLeft --;
             return true;
@@ -154,11 +141,76 @@ function StartGame(roomCode) {
     SendRoomInfo(roomCode);
 }
 
+function GetPlayerByID(roomCode, id) {
+    for (let player of rooms[roomCode].players) {
+        if (player.id === id) return player;
+    }
+}
+
+function Compare(a, b) {
+    if (a.score < b.score) return 1;
+    if (a.score > b.score) return -1;
+    return 0;
+}
+
+function SortLeaderBoard(roomCode) {
+    rooms[roomCode].leaderBoard = rooms[roomCode].players.sort(Compare);
+}
+
+function DetermineMatchOutcome(roomCode) {
+    for (let match in rooms[roomCode].matches) {
+        console.log(`ME: ${match}  THEM:${rooms[roomCode].matches[match].id}`);
+        // if they matched with eachother
+        if (rooms[roomCode].matches[rooms[roomCode].matches[match].id].id === match) {
+            console.log("Accepted");
+            let alreadyMatched = false;
+            // have the match already been added to match outcomes
+            for (let outcome of rooms[roomCode].matchOutcomes) {
+                let hasBoth = true;
+                for (let player of outcome.players) {
+                    if (player.id !== match && player.id !== rooms[roomCode].matches[match].id) {
+                        hasBoth = false;
+                    }
+                }
+                if (hasBoth) {
+                    alreadyMatched = true;
+                    break;
+                }
+            }
+            // if it has then add it
+            if (!alreadyMatched) {
+                GetPlayerByID(roomCode, match).score++;
+                GetPlayerByID(roomCode, rooms[roomCode].matches[match].id).score++;
+                rooms[roomCode].matchOutcomes.push({
+                    players: [GetPlayerByID(roomCode, match), GetPlayerByID(roomCode, rooms[roomCode].matches[match].id)],
+                    outcome: "MATCHED With"
+                })
+            }
+        }
+        else {
+            // feels bad man you got rejected still got to record it tho
+            console.log("Denied");
+            if (GetPlayerByID(roomCode, match).score > 0) GetPlayerByID(roomCode, match).score--;
+            rooms[roomCode].matchOutcomes.push({
+                players: [GetPlayerByID(roomCode, match), GetPlayerByID(roomCode, rooms[roomCode].matches[match].id)],
+                outcome: "Got REJECTED By"
+            })
+        }
+    }
+    SortLeaderBoard(roomCode);
+}
+
 function Match(matchIdx, roomCode, socket) {
-    rooms[roomCode].matches[socket.id] = rooms[roomCode].players[matchIdx];
+    rooms[roomCode].matches[socket.id] = {
+        id: rooms[roomCode].players[matchIdx].id,
+        nick: rooms[roomCode].players[matchIdx].nick,
+        idx: matchIdx
+    }
     console.log(`${Object.keys(rooms[roomCode].matches).length} Players:${rooms[roomCode].players.length}`);
     if (Object.keys(rooms[roomCode].matches).length === rooms[roomCode].players.length) {
+        DetermineMatchOutcome(roomCode);
         rooms[roomCode].stage = "showcase";
+        console.log("SHOWCASE");
         clearTimeout(rooms[roomCode].countdownTimer);
     }
     SendRoomInfo(roomCode);
@@ -190,6 +242,29 @@ io.on("connection", (socket) => {
     })
     socket.on("PickMatch", (matchIdx, roomCode) => {
         Match(matchIdx, roomCode, socket);
+    })
+    socket.on("ToMatchShowcase", (roomCode) => {
+        rooms[roomCode].stage = "match_showcase";
+        console.log(rooms[roomCode].stage);
+        SendRoomInfo(roomCode);
+    })
+    socket.on("NextLeaderboard", (roomCode) => {
+        rooms[roomCode].stage = "leaderboard";
+        SendRoomInfo(roomCode);
+    })
+    socket.on("NextStage", (roomCode) => {
+        rooms[roomCode].stage = "show_round";
+        SendRoomInfo(roomCode);
+    })
+    socket.on("NextRound", (roomCode) => {
+        rooms[roomCode].stage = "game";
+        rooms[roomCode].round++;
+        rooms[roomCode].conversations = [];
+        rooms[roomCode].countdownTimer = null;
+        rooms[roomCode].showcaseConvo = undefined;
+        rooms[roomCode].matches = {};
+        rooms[roomCode].matchOutcomes = [];
+        StartGame(roomCode);
     })
     socket.on("disconnect", () => {
         Disconnect(socket);
