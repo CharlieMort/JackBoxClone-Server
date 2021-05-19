@@ -148,7 +148,7 @@ function StartGame(roomCode) {
         let randConvoIdx = Math.floor(Math.random() * rooms[roomCode].conversations.length);
         rooms[roomCode].showcaseConvo = rooms[roomCode].conversations[randConvoIdx];
         SendRoomInfo(roomCode);
-    }, 20000)
+    }, 120000)
     SendRoomInfo(roomCode);
 }
 
